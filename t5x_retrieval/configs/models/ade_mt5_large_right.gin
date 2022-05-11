@@ -1,0 +1,9 @@
+# Provide architecture overrides for mT5 Large for right tower
+# ginlint: disable=bad-import-order
+
+# Architecture overrides
+RIGHT_NUM_HEADS = 16
+RIGHT_NUM_LAYERS = 24
+RIGHT_HEAD_DIM = 64
+RIGHT_EMBED_DIM = 1024
+RIGHT_MLP_DIM = 2816

@@ -1,0 +1,16 @@
+# Dual Encoder, based on mT5 Tiny model.
+# Provides MODEL
+# ginlint: disable=bad-import-order
+from __gin__ import dynamic_registration
+
+from flax import optim
+import seqio
+
+include 't5x_retrieval/configs/models/de_mt5_base.gin'  # imports vocab, optimizer and model.
+
+# Architecture overrides
+NUM_HEADS = 6
+NUM_LAYERS = 2
+HEAD_DIM = 64
+EMBED_DIM = 32
+MLP_DIM = 64

@@ -1,0 +1,12 @@
+# PMMX-One (P1) dual encoder with ViT G/14 Model, based on T5 (1.1) Tiny model.
+# Provides MODEL
+from __gin__ import dynamic_registration
+
+include 'models/p1_de_mt5_base_vit_B16.gin'  # imports vocab, optimizer and model.
+
+# Architecture overrides
+VIT_MLP_DIM = 8192
+VIT_NUM_LAYERS = 48
+VIT_NUM_HEADS = 16
+VIT_HIDDEN_SIZE = 1664
+VIT_PATCHES = {'size': [14, 14]}

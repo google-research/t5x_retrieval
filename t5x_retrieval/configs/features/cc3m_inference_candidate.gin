@@ -1,0 +1,9 @@
+from __gin__ import dynamic_registration
+from t5x_retrieval import feature_converters
+
+feature_converters.DualEncoderFeatureConverterFactory:
+  is_multimodal = True
+  feature_specs = (
+      ("text_tokens", 'int32', 1, 0),
+      ("targets", 'int32', 1, 0),  ## Always have a `targets`.
+  )

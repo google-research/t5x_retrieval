@@ -1,0 +1,42 @@
+# Dual Encoder based on T5 (1.1) Base model.
+# Provides MODEL
+from __gin__ import dynamic_registration
+
+import seqio
+from t5x import adafactor
+from t5x_retrieval import feature_converters
+from t5x_retrieval import models
+
+ARCHITECTURE = %gin.REQUIRED
+
+include 't5x_retrieval/configs/architectures/de_t5_1_1_flaxformer.gin'
+
+# Architecture overrides
+NUM_HEADS = 12
+NUM_LAYERS = 12
+HEAD_DIM = 64
+EMBED_DIM = 768
+MLP_DIM = 2048
+PROJECTION_DIM = 768
+
+# Vocabulary (shared by encoder and decoder)
+VOCABULARY = @seqio.SentencePieceVocabulary()
+seqio.SentencePieceVocabulary.sentencepiece_model_file = "gs://t5-data/vocabs/cc_all.32000.100extra/sentencepiece.model"
+
+# Optimizer
+# `learning_rate` is set by `Trainer.learning_rate_fn`.
+OPTIMIZER = @adafactor.Adafactor()
+adafactor.Adafactor:
+  decay_rate = 0.8
+  step_offset = 0
+
+# Model
+MODEL = @models.DualEncoderModel()
+models.DualEncoderModel:
+  use_negatives = False
+  use_align_uniform = False
+  feature_converter_cls = @feature_converters.DualEncoderFeatureConverterFactory()
+  module = %ARCHITECTURE  # provided by t5_flaxformer
+  input_vocabulary = %VOCABULARY
+  output_vocabulary = %VOCABULARY
+  optimizer_def = %OPTIMIZER

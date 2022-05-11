@@ -1,0 +1,11 @@
+# Dual Encoder, based on mT5 XXL model.
+# Provides MODEL
+
+include 't5x_retrieval/configs/models/de_mt5_base.gin'  # imports vocab, optimizer and model.
+
+# Architecture overrides
+NUM_HEADS = 64
+NUM_LAYERS = 24
+HEAD_DIM = 64
+EMBED_DIM = 4096
+MLP_DIM = 10240

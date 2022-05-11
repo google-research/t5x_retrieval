@@ -1,0 +1,16 @@
+# Asymmetric Dual Encoder with IDF embeddings enabled in the right tower.
+from __gin__ import dynamic_registration
+
+from flax import linen
+
+from flaxformer.architectures.t5 import t5_architecture
+from flaxformer.experimental import idf_embedding
+import seqio
+
+include 't5x_retrieval/configs/models/ade_mt5_base_base.gin'
+
+LEFT_NUM_EMBEDDINGS = 32128  # vocab size rounded to a multiple of 128 for TPU efficiency
+RIGHT_NUM_EMBEDDINGS = 32128  # vocab size rounded to a multiple of 128 for TPU efficiency
+
+VOCABULARY = @seqio.SentencePieceVocabulary()
+seqio.SentencePieceVocabulary.sentencepiece_model_file = "gs://t5-data/vocabs/cc_all.32000.100extra/sentencepiece.model"

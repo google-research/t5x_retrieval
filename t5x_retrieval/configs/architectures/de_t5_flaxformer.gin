@@ -1,0 +1,169 @@
+# Flaxformer implementation of Dual Encoder, based on original T5 (1.0) architecture.
+#
+# Required to be overridden:
+#
+# - NUM_HEADS
+# - NUM_LAYERS
+# - HEAD_DIM
+# - EMBED_DIM
+# - MLP_DIM
+# - PROJECTION_DIM
+from __gin__ import dynamic_registration
+
+from flax import linen
+
+from flaxformer.architectures.dual_encoder import dual_encoder_architecture
+from flaxformer.architectures.dual_encoder import l2_norm
+from flaxformer.architectures.dual_encoder import poolings
+from flaxformer.architectures.dual_encoder import similarity_functions
+from flaxformer.architectures.t5 import t5_architecture
+from flaxformer.components.attention import dense_attention
+from flaxformer.components import dense
+from flaxformer.components import embedding
+from flaxformer.components import layer_norm
+from flaxformer.components import relative_position_biases
+
+from t5x import models
+from t5x import utils
+from t5x_retrieval import feature_converters
+
+# Must be overridden.
+NUM_HEADS = %gin.REQUIRED
+NUM_LAYERS = %gin.REQUIRED
+HEAD_DIM = %gin.REQUIRED
+EMBED_DIM = %gin.REQUIRED
+MLP_DIM = %gin.REQUIRED
+PROJECTION_DIM = %gin.REQUIRED
+
+# Constants (may be overridden)
+ACTIVATION_DTYPE = 'bfloat16'
+ACTIVATION_PARTITIONING_DIMS = 1
+NUM_EMBEDDINGS = 32128  # vocab size rounded to a multiple of 128 for TPU efficiency
+DROPOUT_RATE = 0.0
+
+# Macros
+BIAS_INIT = @bias_init/linen.initializers.normal()
+bias_init/linen.initializers.normal.stddev = 1e-6
+# Reverse back to @dropout_factory/linen.Dropout once b/200044332 is fixed.
+DROPOUT_FACTORY = @dual_encoder_architecture.NonRepeatingDropout
+dual_encoder_architecture.NonRepeatingDropout:
+  rate = %DROPOUT_RATE
+  broadcast_dims = (-2,)
+
+# Architecture (Flax Module)
+ARCHITECTURE = @dual_encoder_architecture.DualEncoder()
+dual_encoder_architecture.DualEncoder:
+  encoder_factory = @t5_architecture.Encoder
+  pooler_factory = @poolings.MeanPooling
+  shared_token_embedder_factory = @embedding.Embed
+  l2_norm_factory = @l2_norm.L2Norm
+  projection_layer_factory = @projection_layer/dense.DenseGeneral
+  similarity_layer_factory = @similarity_functions.BatchDotProduct
+  dtype = %ACTIVATION_DTYPE
+
+# Encoder
+t5_architecture.Encoder:
+  num_layers = %NUM_LAYERS
+  layer_factory = @t5_architecture.EncoderLayer
+  input_dropout_factory = %DROPOUT_FACTORY
+  output_dropout_factory = %DROPOUT_FACTORY
+  layer_norm_factory = @layer_norm.T5LayerNorm
+  position_embedder_factory = None
+  shared_relative_position_bias_factory = @relative_position_biases.RelativePositionBiases
+  dtype = %ACTIVATION_DTYPE
+
+# TODO(vzhao): Move this to model gin files.
+# Infer the input features from the TASK_FEATURE_LENGTHS passed by the user.
+feature_converters.DualEncoderFeatureConverterFactory:
+  feature_specs = (
+      ("inputs", "int32", 1, 0),
+      ("targets", "int32", 1, 0),
+  )
+  use_negatives = False
+
+# Similarity layer
+similarity_functions.BatchDotProduct:
+  name = 'batch_dot_product'
+
+# Projection layer
+projection_layer/dense.DenseGeneral:
+  features = %PROJECTION_DIM
+  use_bias = False
+  dtype = 'float32'
+  kernel_init = @projection_layer/linen.initializers.variance_scaling()
+  kernel_axis_names = ('embed', 'affinity')
+  bias_init = %BIAS_INIT
+projection_layer/linen.initializers.variance_scaling:
+  scale = 1
+  mode = 'fan_in'
+  distribution = 'truncated_normal'
+
+# Encoder Layer
+t5_architecture.EncoderLayer:
+  attention = @dense_attention.MultiHeadDotProductAttention()
+  mlp = @dense.MlpBlock()
+  dropout_factory = %DROPOUT_FACTORY
+  layer_norm_factory = @layer_norm.T5LayerNorm
+  activation_partitioning_dims = %ACTIVATION_PARTITIONING_DIMS
+
+# Token Embedder (shared)
+embedding.Embed:
+  num_embeddings= %NUM_EMBEDDINGS
+  features = %EMBED_DIM
+  cast_input_dtype = 'int32'
+  dtype = %ACTIVATION_DTYPE
+  attend_dtype = 'float32'  # for logit training stability
+  one_hot = True
+  embedding_init = @token_embedder_init/linen.initializers.normal()
+  name = 'token_embedder'
+token_embedder_init/linen.initializers.normal.stddev = 1.0
+
+# Attention (encoder, decoder, self-attention)
+dense_attention.MultiHeadDotProductAttention:
+  num_heads = %NUM_HEADS
+  head_dim = %HEAD_DIM
+  dtype = %ACTIVATION_DTYPE
+  kernel_init =  @attention_kernel_init/linen.initializers.variance_scaling()
+  bias_init = %BIAS_INIT
+  use_bias = False
+  broadcast_dropout = True
+  dropout_rate = %DROPOUT_RATE
+attention_kernel_init/linen.initializers.variance_scaling:
+  scale = 1.0
+  mode = 'fan_in'
+  distribution = 'normal'
+
+# Relative position biases (encoder, decoder)
+relative_position_biases.RelativePositionBiases:
+  num_heads = %NUM_HEADS
+  num_buckets = 32
+  max_distance = 128
+  dtype = %ACTIVATION_DTYPE
+  embedding_init = @relative_position_bias_init/linen.initializers.variance_scaling()
+relative_position_bias_init/linen.initializers.variance_scaling:
+  scale = 1.0
+  mode = 'fan_avg'
+  distribution = 'uniform'
+
+# MLP (encoder)
+dense.MlpBlock:
+  use_bias = False
+  intermediate_dim = %MLP_DIM
+  activations = ('relu',)
+  kernel_init = @mlp_kernel_init/linen.initializers.variance_scaling()
+  bias_init = %BIAS_INIT
+  intermediate_dropout_rate = %DROPOUT_RATE
+  final_dropout_rate = 0  # Zero to be consistent with earlier configdict setup.
+  intermediate_dropout = @intermediate_dropout/dual_encoder_architecture.NonRepeatingDropout()
+  final_dropout = @final_dropout/dual_encoder_architecture.NonRepeatingDropout()
+  dtype = %ACTIVATION_DTYPE
+mlp_kernel_init/linen.initializers.variance_scaling:
+  scale = 1.0
+  mode = 'fan_in'
+  distribution = 'truncated_normal'
+intermediate_dropout/dual_encoder_architecture.NonRepeatingDropout:
+  rate = %DROPOUT_RATE
+  broadcast_dims = (-2,)
+final_dropout/dual_encoder_architecture.NonRepeatingDropout:
+  rate = 0
+  broadcast_dims = (-2,)

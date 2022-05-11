@@ -1,0 +1,54 @@
+# Defaults for SentEval evaluation.
+#
+# You must also include a binding for MODEL.
+#
+# Required to be set:
+#
+# - FEATURE_LENGTHS
+# - CHECKPOINT_PATH
+#
+# Commonly overridden options:
+#
+# - BATCH_SIZE
+
+from __gin__ import dynamic_registration
+
+import __main__ as senteval_jax
+
+from t5x import partitioning
+from t5x import utils
+from t5x_retrieval import models
+from t5x_retrieval import partitioning as t5xr_partitioning
+
+# Must be overridden
+FEATURE_LENGTHS = %gin.REQUIRED
+CHECKPOINT_PATH = %gin.REQUIRED
+
+# Commonly overridden
+BATCH_SIZE = None  # use number of replicas
+
+senteval_jax.create_batcher:
+  restore_checkpoint_cfg = @utils.RestoreCheckpointConfig()
+  model = %MODEL
+  feature_lengths = %FEATURE_LENGTHS
+  partitioner = @partitioning.PjitPartitioner()
+  batch_size = %BATCH_SIZE
+
+utils.RestoreCheckpointConfig:
+  path = %CHECKPOINT_PATH
+  mode = 'specific'
+  dtype = 'bfloat16'
+
+partitioning.PjitPartitioner:
+  num_partitions = 1
+
+adafactor.Adafactor:
+  decay_rate = 0.8
+  step_offset = 0
+  logical_factor_rules = @adafactor_utils.logical_factor_rules()
+
+partitioning.PjitPartitioner:
+  logical_axis_rules = @partitioning.standard_logical_axis_rules()
+
+partitioning.standard_logical_axis_rules:
+  additional_rules = @t5xr_partitioning.standard_logical_axis_rules()

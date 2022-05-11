@@ -1,0 +1,5 @@
+from __gin__ import dynamic_registration
+from t5x import decoding
+from t5x import models
+
+models.EncoderDecoderModel.decode_fn = @decoding.temperature_sample
