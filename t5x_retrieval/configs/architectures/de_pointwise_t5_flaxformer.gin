@@ -1,0 +1,41 @@
+# Flaxformer implementation of Dual Encoder, based on original T5 (1.0) architecture.
+#
+# Required to be overridden:
+#
+# - NUM_HEADS
+# - NUM_LAYERS
+# - HEAD_DIM
+# - EMBED_DIM
+# - MLP_DIM
+# - PROJECTION_DIM
+from __gin__ import dynamic_registration
+
+from flaxformer.architectures.dual_encoder import dual_encoder_architecture
+from flaxformer.architectures.dual_encoder import similarity_functions
+
+from t5x_retrieval import feature_converters
+
+include 't5x_retrieval/configs/architectures/de_t5_flaxformer.gin'
+
+# Additional constants must be overridden.
+NUM_CLASSES = %gin.REQUIRED
+
+# Architecture (Flax Module)
+dual_encoder_architecture.DualEncoder:
+  similarity_layer_factory = @similarity_functions.PointwiseFFNN
+
+# Infer the input features from the TASK_FEATURE_LENGTHS passed by the user.
+feature_converters.DualEncoderFeatureConverterFactory:
+  feature_specs = (
+      ("inputs", "int32", 1, 0),
+      ("targets", "int32", 1, 0),
+      ("labels", "float32", 1, 0),
+  )
+  use_negatives = False
+
+# Similarity layer
+similarity_functions.PointwiseFFNN:
+  name = 'pointwise_ffnn'
+  features = %NUM_CLASSES
+  act_fn = 'linear'
+  dropout_factory = %DROPOUT_FACTORY
