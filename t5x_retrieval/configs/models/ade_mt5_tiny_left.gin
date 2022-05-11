@@ -1,9 +1,0 @@
-# Provide architecture overrides for mT5 Tiny for left tower
-# ginlint: disable=bad-import-order
-
-# Architecture overrides
-LEFT_NUM_HEADS = 6
-LEFT_NUM_LAYERS = 2
-LEFT_HEAD_DIM = 64
-LEFT_EMBED_DIM = 32
-LEFT_MLP_DIM = 64
