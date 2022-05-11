@@ -1,0 +1,11 @@
+from __gin__ import dynamic_registration
+import __main__ as train_script
+
+from t5x_retrieval import utils as t5xr_utils
+
+from t5x import utils
+
+# Use unmixed batch for training.
+train_script.train:
+  get_dataset_fn = @t5xr_utils.get_batch_unmixed_dataset
+  train_eval_get_dataset_fn = @utils.get_dataset

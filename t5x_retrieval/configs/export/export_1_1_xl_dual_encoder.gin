@@ -1,0 +1,30 @@
+from __gin__ import dynamic_registration
+
+from t5x.google.export import export_lib
+from t5x import partitioning
+from t5x_retrieval import models
+
+include 't5x/google/export/configs/export_base_dual_encoder.gin'
+include 'models/de_t5_1_1_xl.gin'
+
+TASK_FEATURE_LENGTHS = {'inputs': 128, 'targets': 128}
+
+export_lib.save:
+  model = @models.DualEncoderModel()
+  inference_mode = 'score'
+  partitioner = @partitioning.PjitPartitioner()
+  create_preprocessor_fn = @export_lib.create_dual_encoder_preprocessor
+  warmup_examples = [
+    'which city is the capital of japan?',
+    'who won the nba mvp player in 2021?',
+  ]
+
+export_lib.create_dual_encoder_preprocessor:
+  output_features = %OUTPUT_FEATURES
+  task_feature_lengths = %TASK_FEATURE_LENGTHS
+
+export_lib.ExportableModule:
+  use_batch_function = False
+
+partitioning.PjitPartitioner:
+  params_on_devices = False

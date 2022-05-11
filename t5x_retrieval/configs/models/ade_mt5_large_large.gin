@@ -1,0 +1,11 @@
+# Asymmetric Dual Encoder with mT5 Large left and right tower
+# Provides MODEL
+# ginlint: disable=bad-import-order
+from __gin__ import dynamic_registration
+
+from flax import optim
+import seqio
+
+include 't5x_retrieval/configs/models/ade_mt5.gin'  # imports vocab, optimizer and model.
+include 't5x_retrieval/configs/models/ade_mt5_large_left.gin'  # left tower architectural overrides
+include 't5x_retrieval/configs/models/ade_mt5_large_right.gin'  # right tower architectural overrides

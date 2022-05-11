@@ -124,7 +124,7 @@ def get_test_model(base_model_config,
   """Creates and returns an instance of `models.BaseModel`."""
   gin.clear_config()
   gin.parse_config_file(
-      f'third_party/py/t5x_retrieval/configs/models/{base_model_config}')
+      f't5x_retrieval/configs/models/{base_model_config}')
   gin.parse_config(f"""
       NUM_HEADS = {num_heads}
       HEAD_DIM = {head_dim}
@@ -147,7 +147,7 @@ def get_test_model_for_asymmetric_dual_encoder(model_config, gin_str=None):
   """Creates and returns an instance of Asymmetric Dual Encoder."""
   gin.clear_config()
   gin.parse_config_file(
-      f'third_party/py/t5x_retrieval/configs/models/{model_config}')
+      f't5x_retrieval/configs/models/{model_config}')
   if gin_str:
     gin.parse_config(gin_str)
   gin.finalize()

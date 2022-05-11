@@ -1,0 +1,12 @@
+# PMMX-One (P1) dual encoder, based on mT5 XL model.
+# Provides MODEL
+
+include 't5x_retrieval/configs/models/p1_de_mt5_base.gin'
+NUM_EMBEDDINGS = 250112  # vocab size rounded to a multiple of 128 for TPU efficiency
+
+# Architecture overrides
+NUM_HEADS = 32
+NUM_LAYERS = 24
+HEAD_DIM = 64
+EMBED_DIM = 2048
+MLP_DIM = 5120

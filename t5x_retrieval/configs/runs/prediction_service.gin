@@ -1,0 +1,22 @@
+from __gin__ import dynamic_registration
+import __main__ as prediction_service
+
+from t5x import partitioning
+from t5x_retrieval import feature_converters
+from t5x_retrieval import partitioning as t5xr_partitioning
+from t5x_retrieval import prediction_service_lib as t5xr_prediction_service_lib
+
+include 't5x/configs/runs/prediction_service.gin'
+
+partitioning.standard_logical_axis_rules:
+  additional_rules = @t5xr_partitioning.standard_logical_axis_rules()
+
+prediction_service.create_handler:
+  score_inference_mode_cls = @t5xr_prediction_service_lib.EncodingInferenceMode
+
+# For prediction service, no label will be passed to the model.
+feature_converters.DualEncoderFeatureConverterFactory:
+  feature_specs = (
+    ("inputs", "int32", 1, 0),
+    ("targets", "int32", 1, 0),
+  )
