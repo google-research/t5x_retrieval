@@ -1,3 +1,0 @@
-import longt5.tasks_and_mixtures.tasks
-
-include 't5x_retrieval/configs/runs/pretrain.gin'
