@@ -1,0 +1,41 @@
+# Flaxformer implementation of Dual Encoder, based on T5.1.1 architecture.
+#
+# Required to be overridden:
+#
+# - NUM_HEADS
+# - NUM_LAYERS
+# - HEAD_DIM
+# - EMBED_DIM
+# - MLP_DIM
+# - PROJECTION_DIM
+from __gin__ import dynamic_registration
+
+from flax import linen
+
+from flaxformer.components import dense
+from flaxformer.components import layer_norm
+
+include 't5x_retrieval/configs/architectures/de_t5_flaxformer.gin'
+
+# Additional constants (may be overridden)
+SCALE = 1.0
+
+# Projection layer
+projection_layer/linen.initializers.variance_scaling:
+  scale = %SCALE
+
+# Attention (encoder, decoder, self-attention)
+attention_kernel_init/linen.initializers.variance_scaling:
+  scale = %SCALE
+
+# Relative position biases (encoder, decoder)
+relative_position_bias_init/linen.initializers.variance_scaling:
+  scale = %SCALE
+
+# MLP (encoder)
+dense.MlpBlock:
+  activations = ('gelu', 'linear')
+mlp_kernel_init/linen.initializers.variance_scaling:
+  scale = %SCALE
+
+layer_norm.T5LayerNorm.dtype = %ACTIVATION_DTYPE
