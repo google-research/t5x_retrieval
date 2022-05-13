@@ -15,7 +15,7 @@
 """Import API modules."""
 
 import t5x_retrieval.adafactor_utils
-import t5x_retrieval.feature_converter
+import t5x_retrieval.feature_converters
 import t5x_retrieval.models
 import t5x_retrieval.partitioning
 import t5x_retrieval.tasks
