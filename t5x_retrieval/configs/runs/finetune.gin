@@ -44,7 +44,6 @@ train_script.train:
   eval_period = 200  # eval frequency
   # TODO(jianmon): Explore training instability b/200044332.
   random_seed = None
-  xprof_seconds = 5
 
 train/utils.DatasetConfig:
   mixture_or_task_name = %MIXTURE_OR_TASK_NAME
