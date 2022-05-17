@@ -18,6 +18,69 @@ This launch open sources the training and inference code, including references t
 
 For more details about the training pipeline and task definitions, you can check out [T5X](https://github.com/google-research/t5x) and [Seqio](https://github.com/google/seqio).
 
+# Quickstart (Recommended)
+
+T5X Retrieval supports the training and evaluation options provided by [T5X](https://github.com/google-research/t5x). It can be run with [XManager](https://github.com/deepmind/xmanager) on
+[Vertex AI](https://cloud.google.com/vertex-ai), which is a platform for
+training that creates TPU instances and runs code on the TPUs.
+
+We briefly summarized steps to quickly start the training and inference jobs. You can find more details at the [T5X Quickstart](https://github.com/google-research/t5x#quickstart-recommended).
+
+0. [Create a GCP project](https://github.com/deepmind/xmanager#create-a-gcp-project-optional). Create the bucket to store data and models.
+
+1. Follow the pre-requisites and directions to install [XManager](https://github.com/deepmind/xmanager).
+
+2. [Optional] GCP projects come with 8 cores by default, which is enough to run one training experiment on a single TPU host. Request TPU quota as required if you want to run multi-host training or multiple runs in parallel. 
+
+3. Install all dependencies such as [T5X](https://github.com/google-research/t5x), [Flaxformer](https://github.com/google/flaxformer), [TFDS](https://github.com/tensorflow/datasets).
+
+4. Launch the xmanager script located at `t5x/scripts/xm_launch.py`.
+
+As a running example, we use the [BEIR MS Marco dataset](https://github.com/beir-cellar/beir#beers-available-datasets).
+
+```sh
+# Export GOOGLE_CLOUD_BUCKET_NAME to a proper value.
+export GOOGLE_CLOUD_BUCKET_NAME=...
+export TFDS_DATA_DIR=gs://$GOOGLE_CLOUD_BUCKET_NAME/t5x_retrieval/data
+export MODEL_DIR=gs://$GOOGLE_CLOUD_BUCKET_NAME/t5x_retrieval/$(date +%Y%m%d)
+
+# Install dependencies.
+git clone https://github.com/google-research/t5x /tmp/t5x
+git clone https://github.com/google-research/t5x_retrieval /tmp/t5x_retrieval
+git clone https://github.com/google/flaxformer /tmp/flaxformer
+git clone https://github.com/google/aqt.git /tmp/aqt
+
+cd /tmp/t5x/
+
+python3 t5x/scripts/xm_launch.py \
+  --pip_install="apache_beam[gcp]" \
+  --model_dir=gs://$GOOGLE_CLOUD_BUCKET_NAME/t5x/msmarco_ft_$(date +%Y%m%d) \
+  --tfds_data_dir=gs://$GOOGLE_CLOUD_BUCKET_NAME/t5x/data \
+  --project_dirs=/tmp/t5x_retrieval/t5x_retrieval,/tmp/flaxformer/flaxformer,/tmp/aqt/aqt \
+  --gin_file=t5x_retrieval/configs/models/de_t5_base.gin \
+  --gin.INITIAL_CHECKPOINT_PATH=\"gs://t5-data/pretrained_models/t5x/t5_base/checkpoint_999900\" \
+  --gin_file=t5x_retrieval/configs/runs/finetune.gin \
+  --gin.TRAIN_STEPS=1009900 \
+  --gin.utils.create_learning_rate_scheduler.step_offset=999900 \
+  --gin.utils.create_learning_rate_scheduler.warmup_steps=1000 \
+  --gin.utils.create_learning_rate_scheduler.decay_factor=0.00000125 \
+  --gin.USE_CACHED_TASKS=False \
+  --gin.models.DualEncoderModel.use_negatives=False \
+  --gin.train.eval_period=500 \
+  --gin.utils.SaveCheckpointConfig.keep=10 \
+  --gin.utils.SaveCheckpointConfig.period=500 \
+  --gin.train/DatasetConfig.batch_size=512 \
+  --gin.MIXTURE_OR_TASK_NAME="'beir_msmarco_retrieval'" \
+  --gin.MIXTURE_OR_TASK_MODULE="'t5x_retrieval.tasks'" \
+  --gin.TASK_FEATURE_LENGTHS="{'inputs': 64, 'targets': 256}"
+```
+
+Notes:
+
+-   Check `gs://$GOOGLE_CLOUD_BUCKET_NAME/t5x/` for the output artifacts, which can be read by TensorBoard.
+-   Add `--pip_install="apache_beam[gcp]"` to the script if you have not downloaded the dataset before hand.
+-   The `TRAIN_STEPS = step_offset + real_train_steps`, where `step_offset` is the step of the loaded checkpoint while the `real_train_step` is the steps that the model will be trained for.
+
 # Models
 
 ## Sentence encoders

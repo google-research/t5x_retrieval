@@ -25,13 +25,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """Utility functions for training and evaluation.
 
 """
 
 import time
-from typing import Callable, Optional, Type
+from typing import Callable, Optional, Sequence, Type
 
 import clu.metrics
 import flax
@@ -42,11 +41,14 @@ import jax.numpy as jnp
 import numpy as np
 import seqio
 import sklearn.metrics
+from t5x import checkpoints as t5x_checkpoints
 from t5x import losses as t5x_losses
+from t5x import state_utils as t5x_state_utils
 from t5x import utils as t5x_utils
 import tensorflow as tf
 
 DatasetConfig = t5x_utils.DatasetConfig
+PyTreeDef = type(jax.tree_structure(None))
 
 
 # ===== Datasets ===== #
@@ -116,6 +118,7 @@ def sigmoid_cross_entropy_with_logits(logits, labels):
   Args:
     logits: similarity scores
     labels: ground-truth labels
+
   Returns:
     cross-entropy loss
   """
@@ -166,7 +169,7 @@ def binary_cross_entropy_with_logits(logits,
     loss = loss * weights
   # Multiply the loss by temperature^2, to keep it on the same scale as the
   # batch softmax loss.
-  return (temperature ** 2) * loss
+  return (temperature**2) * loss
 
 
 def sparse_labels_for_in_batch_cross_entropy(logits: jnp.array) -> jnp.array:
@@ -178,8 +181,8 @@ def in_batch_cross_entropy(
     logits: jnp.array,
     labels: Optional[jnp.array] = None,
     weights: Optional[jnp.array] = None,
-    reduce_fn: Optional[Callable[[jnp.array], jnp.array]] = jnp.mean
-    ) -> jnp.array:
+    reduce_fn: Optional[Callable[[jnp.array],
+                                 jnp.array]] = jnp.mean) -> jnp.array:
   """In batch cross-entropy loss function.
 
   This corresponds to computing a softmax for each row (and optionally each
@@ -260,3 +263,69 @@ def compute_auc(targets, predictions, targets_threshold=None):
           AUC.from_model_output(
               logits=transformed_predictions, labels=binarized_targets),
   }
+
+
+# ===== Checkpoint ===== #
+def partially_load_checkpoint(
+    excluded_patterns: Sequence[str],
+    require_all_rules_match: bool = True
+) -> t5x_checkpoints.RestoreStateTransformationFn:
+  """Load a checkpoint partially, used in exports to trim the output SavedModel graph.
+
+  Args:
+    excluded_patterns: Checkpoint Optimizer param patterns to exclude from the
+      export.
+    require_all_rules_match: Whether to verify that all the patterns match
+      correctly to a path in the checkpoint.
+
+  Returns:
+    A RestoreStateTransformationFn that excludes the pattern specified in the
+  """
+  assignment_map = [(pattern, None) for pattern in excluded_patterns]
+
+  def _wrapped_assignment_map(
+      ckpt_optimizer_state: PyTreeDef,
+      _: PyTreeDef,  # pylint: disable=unused-argument
+      *,
+      is_resuming: bool = False):
+    """Remap the optimizer state to checkpoint optimizer state.
+
+     Setting assignment maps in RestoreCheckpointConfig in load_t5x_checkpoint
+     sets optimizer state to an empty dict, failing the assignments.
+    Args:
+      ckpt_optimizer_state: Checkpoint param state.
+      is_resuming: `True` iff this restore call is due to a job resuming after
+        being temporarily stopped due to, for example, a preemption. This is
+        useful when there is restore logic that should run when restoring from
+        some pre-existing checkpoint, but that should not run again when
+        resuming from a newly-written checkpoint.
+
+    Returns:
+      The result of transforming the checkpoint state dict.
+    """
+    return t5x_state_utils.apply_assignment_map(
+        ckpt_optimizer_state,
+        ckpt_optimizer_state,  # Optimizer State
+        assignment_map,
+        require_all_rules_match,
+        is_resuming=is_resuming)
+
+  return _wrapped_assignment_map
+
+
+def load_tower(side: str) -> t5x_checkpoints.RestoreStateTransformationFn:
+  """Load a single `side` tower of an Asymmetric Dual Encoder.
+
+  Args:
+    side: The side of the tower to load. Available values are [left, right]
+
+  Returns:
+    A restore state transformation function that filters out the weights of the
+    other tower. Only set if inference mode is set to `encode_{side}`.
+  """
+  assert side in ('left', 'right'), (
+      f'Expected side to be one of [left, right], but is {side}')
+  if side == 'left':
+    return partially_load_checkpoint(excluded_patterns=[r'.*right_.*'])
+  else:
+    return partially_load_checkpoint(excluded_patterns=[r'.*left_.*'])

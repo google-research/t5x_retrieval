@@ -25,7 +25,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """Tests for utils."""
 
 from absl.testing import absltest
@@ -154,6 +153,85 @@ class UtilsTest(parameterized.TestCase):
 
     self.assertLess(scalar_loss_mean, scalar_loss_worse)
     self.assertEqual(2.0 * scalar_loss_mean, scalar_loss_sum)
+
+
+class CheckpointUtilsTest(parameterized.TestCase):
+
+  def test_partially_load_checkpoint(self):
+    test_checkpoint = {
+        "foo": 123,
+        "bar": {
+            "include": 123,
+            "exclude": 456
+        },
+        "exclude_key": 123
+    }
+    state_transformation_fn = utils.partially_load_checkpoint([r".*exclude.*"])
+    actual = state_transformation_fn(test_checkpoint, {})
+    self.assertEqual(actual, {"foo": 123, "bar": {"include": 123}})
+    self.assertNotEqual(actual, test_checkpoint)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="load_left_tower", side="left"),
+      dict(testcase_name="load_right_tower", side="right"))
+  def test_load_tower(self, side):
+    test_checkpoint = {
+        "optimizer": {
+            "targets": {
+                "left_encoder": {
+                    "layer_1": 1,
+                    "layer_2": 2,
+                    "layer_3": 3
+                },
+                "right_encoder": {
+                    "layer_1": 1,
+                    "layer_2": 2,
+                    "layer_3": 3
+                },
+                "left_projection_layer": 100,
+                "right_projection_layer": 100,
+            },
+            "states": {
+                "params": {
+                    "left_encoder": {
+                        "m": 1,
+                        "v": 2,
+                    },
+                    "right_encoder": {
+                        "m": 1,
+                        "v": 2,
+                    },
+                },
+                "step": 100
+            },
+        }
+    }
+    state_transform_fn = utils.load_tower(side)
+    actual = state_transform_fn(test_checkpoint, {})
+    # Test checkpoint should not be modified
+    self.assertNotEqual(actual, test_checkpoint)
+    self.assertEqual(
+        actual, {
+            "optimizer": {
+                "targets": {
+                    f"{side}_encoder": {
+                        "layer_1": 1,
+                        "layer_2": 2,
+                        "layer_3": 3
+                    },
+                    f"{side}_projection_layer": 100,
+                },
+                "states": {
+                    "params": {
+                        f"{side}_encoder": {
+                            "m": 1,
+                            "v": 2,
+                        },
+                    },
+                    "step": 100
+                },
+            }
+        })
 
 
 if __name__ == "__main__":
