@@ -162,14 +162,14 @@ Avg w/o MS MARCO | 0.580        | 0.609                                         
 
 We have released the following checkpoints for SentenceT5 and GTR pre-trained models:
 
-* **SentenceT5-Base** ([config](configs/models/de_t5_base.gin), 110M parameters): [gs://t5-data/pretrained_models/t5x/retrieval/st5_base](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/retrieval/st5_base)
-* **SentenceT5-Large** ([config](configs/models/de_t5_large.gin), 335M parameters): [gs://t5-data/pretrained_models/t5x/retrieval/st5_large](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/retrieval/st5_large/)
-* **SentenceT5-XL** ([config](configs/models/de_t5_3B.gin), 1.24B parameters): [gs://t5-data/pretrained_models/t5x/retrieval/st5_xl](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/retrieval/st5_xl/)
-* **SentenceT5-XXL** ([config](configs/models/de_t5_11B.gin), 4.8B parameters): [gs://t5-data/pretrained_models/t5x/retrieval/st5_xxl](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/retrieval/st5_xxl/)
-* **GTR-Base** ([config](configs/models/de_t5_base.gin), 110M parameters): [gs://t5-data/pretrained_models/t5x/retrieval/gtr_base](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/retrieval/gtr_base/)
-* **GTR-Large** ([config](configs/models/de_t5_large.gin), 335M parameters): [gs://t5-data/pretrained_models/t5x/retrieval/gtr_large](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/retrieval/gtr_large/)
-* **GTR-XL** ([config](configs/models/de_t5_3B.gin), 1.24B parameters): [gs://t5-data/pretrained_models/t5x/retrieval/gtr_xl](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/retrieval/gtr_xl/)
-* **GTR-XXL** ([config](configs/models/de_t5_11B.gin), 4.8B parameters): [gs://t5-data/pretrained_models/t5x/retrieval/gtr_xxl](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/retrieval/gtr_xxl/)
+* **SentenceT5-Base** ([config](t5x_retrieval/configs/models/de_t5_base.gin), 110M parameters): [gs://t5-data/pretrained_models/t5x/retrieval/st5_base](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/retrieval/st5_base)
+* **SentenceT5-Large** ([config](t5x_retrieval/configs/models/de_t5_large.gin), 335M parameters): [gs://t5-data/pretrained_models/t5x/retrieval/st5_large](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/retrieval/st5_large/)
+* **SentenceT5-XL** ([config](t5x_retrieval/configs/models/de_t5_3B.gin), 1.24B parameters): [gs://t5-data/pretrained_models/t5x/retrieval/st5_xl](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/retrieval/st5_xl/)
+* **SentenceT5-XXL** ([config](t5x_retrieval/configs/models/de_t5_11B.gin), 4.8B parameters): [gs://t5-data/pretrained_models/t5x/retrieval/st5_xxl](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/retrieval/st5_xxl/)
+* **GTR-Base** ([config](t5x_retrieval/configs/models/de_t5_base.gin), 110M parameters): [gs://t5-data/pretrained_models/t5x/retrieval/gtr_base](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/retrieval/gtr_base/)
+* **GTR-Large** ([config](t5x_retrieval/configs/models/de_t5_large.gin), 335M parameters): [gs://t5-data/pretrained_models/t5x/retrieval/gtr_large](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/retrieval/gtr_large/)
+* **GTR-XL** ([config](t5x_retrieval/configs/models/de_t5_3B.gin), 1.24B parameters): [gs://t5-data/pretrained_models/t5x/retrieval/gtr_xl](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/retrieval/gtr_xl/)
+* **GTR-XXL** ([config](t5x_retrieval/configs/models/de_t5_11B.gin), 4.8B parameters): [gs://t5-data/pretrained_models/t5x/retrieval/gtr_xxl](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/retrieval/gtr_xxl/)
 
 
 # References
