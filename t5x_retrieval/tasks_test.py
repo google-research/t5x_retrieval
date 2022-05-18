@@ -32,8 +32,7 @@ _TASKS = ['beir_msmarco_retrieval']
 class TasksTest(parameterized.TestCase):
   """This test ensures that the task.py file can be loaded without errors.
 
-  It does not ensure that every single task/mixture works. Also we cannot test
-  most of the tasks as they are stored on CNS with limited read access.
+  It does not ensure that every single task/mixture works.
   """
 
   @parameterized.parameters(((name,) for name in _TASKS))
