@@ -50,7 +50,6 @@ class BatchUnmixedDatasetFnsTest(seqio.test_utils.FakeMixtureTest):
         expected_shape = [None]
       self.assertEqual(expected_shape, v.as_list())
 
-  # TODO(jianmon): Add tests to verify each batch comes from a single task.
   def verify_batch_unmixed_dataset_fn(self, cfg, shard_id, num_shards,
                                       batch_size, sequence_length,
                                       feature_converter_cls):

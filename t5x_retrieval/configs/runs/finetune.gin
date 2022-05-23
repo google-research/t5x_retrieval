@@ -42,7 +42,6 @@ train_script.train:
   infer_eval_dataset_cfg = None
   eval_steps = 20
   eval_period = 200  # eval frequency
-  # TODO(jianmon): Explore training instability b/200044332.
   random_seed = None
 
 train/utils.DatasetConfig:

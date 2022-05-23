@@ -40,7 +40,6 @@ utils = seqio.utils
 FeatureConverter = seqio.FeatureConverter
 
 
-# TODO(jianmon): Add features for universal feature converter.
 _MODEL_FEATURES_MAPPING = {
     "inputs": "left_encoder_input_tokens",
     "targets": "right_encoder_input_tokens",
@@ -82,9 +81,6 @@ class DualEncoderFeatureConverterFactory(object):
   def __call__(self,
                pack: bool = False,
                use_custom_packing_ops: bool = False):
-    # TODO(jianmon): Rewrite the negative feature converter to be consistent
-    # with the DualEncoderFeatureConverterFactory API to set the negative
-    # features based on the feature_specs.
     if self.use_negatives and not self.is_multimodal:
       # NOTE: only works for text modality.
       return DualEncoderWithNegativesFeatureConverter(

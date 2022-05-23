@@ -31,7 +31,6 @@
 from t5x import partitioning
 
 
-# TODO(jianmon): Find a better way to port additional rules from other library.
 def standard_logical_axis_rules() -> partitioning.LogicalAxisRules:
   """Returns t5x retrieval specific partitioning rules."""
   return (

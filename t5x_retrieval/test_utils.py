@@ -97,7 +97,6 @@ def make_devices(nx: int,
   for x, y, z, c in itertools.product(*map(range, device_bounds)):
     hx, hy, hz, hc = jax.tree_multimap(lambda a, b: a // b, (x, y, z, c),
                                        host_layout)
-    # TODO(levskaya, jekbradbury): verify this id/host ordering on TPU v4
     device_id = coords_to_idx((c, x, y, z), (nc, nx, ny, nz))  # pytype: disable=wrong-arg-types
     process_index = coords_to_idx((hc, hx, hy, hz), (hnc, hnx, hny, hnz))  # pytype: disable=wrong-arg-types
     devices.append(
@@ -111,7 +110,6 @@ def make_devices(nx: int,
   return devices
 
 
-# TODO(jianmon): Remove gin-dependency and build the module directly.
 def get_test_model(base_model_config,
                    *,
                    emb_dim=4,

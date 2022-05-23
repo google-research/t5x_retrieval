@@ -52,3 +52,27 @@ seqio.TaskRegistry.add(
     ],
     metric_fns=[],
     output_features=DEFAULT_OUTPUT_FEATURES)
+
+
+# ============================ Inference Tasks/Mixtures =======================
+# ----- Beir MS Marco-----
+for split in ["query", "passage"]:
+  seqio.TaskRegistry.add(
+      f"beir_msmarco_retrieval_{split}",
+      source=seqio.TfdsDataSource(
+          tfds_name="beir/msmarco:1.0.0",
+          splits={split: split},
+      ),
+      preprocessors=[
+          functools.partial(
+              t5.data.preprocessors.rekey,
+              key_map={
+                  "inputs": split,
+                  "targets": f"{split}_id",
+              }),
+          seqio.preprocessors.tokenize,
+          seqio.CacheDatasetPlaceholder(),
+          seqio.preprocessors.append_eos_after_trim,
+      ],
+      metric_fns=[],
+      output_features=DEFAULT_OUTPUT_FEATURES)
