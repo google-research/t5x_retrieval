@@ -44,9 +44,8 @@ DROPOUT_RATE = 0.0
 # Macros
 BIAS_INIT = @bias_init/linen.initializers.normal()
 bias_init/linen.initializers.normal.stddev = 1e-6
-# Reverse back to @dropout_factory/linen.Dropout once b/200044332 is fixed.
-DROPOUT_FACTORY = @dual_encoder_architecture.NonRepeatingDropout
-dual_encoder_architecture.NonRepeatingDropout:
+DROPOUT_FACTORY = @dropout_factory/linen.Dropout
+dropout_factory/linen.Dropout:
   rate = %DROPOUT_RATE
   broadcast_dims = (-2,)
 
@@ -79,7 +78,6 @@ feature_converters.DualEncoderFeatureConverterFactory:
       ("inputs", "int32", 1, 0),
       ("targets", "int32", 1, 0),
   )
-  use_negatives = False
 
 # Similarity layer
 similarity_functions.BatchDotProduct:
@@ -153,17 +151,9 @@ dense.MlpBlock:
   kernel_init = @mlp_kernel_init/linen.initializers.variance_scaling()
   bias_init = %BIAS_INIT
   intermediate_dropout_rate = %DROPOUT_RATE
-  final_dropout_rate = 0  # Zero to be consistent with earlier configdict setup.
-  intermediate_dropout = @intermediate_dropout/dual_encoder_architecture.NonRepeatingDropout()
-  final_dropout = @final_dropout/dual_encoder_architecture.NonRepeatingDropout()
+  final_dropout_rate = 0
   dtype = %ACTIVATION_DTYPE
 mlp_kernel_init/linen.initializers.variance_scaling:
   scale = 1.0
   mode = 'fan_in'
   distribution = 'truncated_normal'
-intermediate_dropout/dual_encoder_architecture.NonRepeatingDropout:
-  rate = %DROPOUT_RATE
-  broadcast_dims = (-2,)
-final_dropout/dual_encoder_architecture.NonRepeatingDropout:
-  rate = 0
-  broadcast_dims = (-2,)

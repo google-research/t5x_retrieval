@@ -25,7 +25,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """T5X Retrieval Models.
 
 This module uses Flaxformer modules to build a higher-level model structure and
@@ -165,6 +164,9 @@ class DualEncoderBase(t5x_models.BaseTransformerModel):
 class DualEncoderModel(DualEncoderBase):
   """Model class for Dual Encoder."""
 
+  ALLOWED_INFERENCE_MODE = frozenset(
+      {'encode', 'similarity', 'pointwise_similarity'})
+
   def __init__(
       self,
       module: nn.Module,
@@ -227,14 +229,45 @@ class DualEncoderModel(DualEncoderBase):
       )
 
     if self._use_negatives:
-      (left_encodings, right_encodings, logits), _ = self.module.apply(
-          {'params': params},
-          batch['left_encoder_input_tokens'],
-          batch['right_encoder_input_tokens'],
-          batch['right_negative_encoder_input_tokens'],
-          enable_dropout=rngs is not None,
-          rngs=rngs,
-          mutable='dropout')
+      left_tokens = batch['left_encoder_input_tokens']
+      right_positive_tokens = batch['right_encoder_input_tokens']
+      right_negative_tokens = batch['right_negative_encoder_input_tokens']
+
+      # left/right_encoder_input_tokens should be 2d tensor.
+      assert left_tokens.ndim == 2
+      assert right_positive_tokens.ndim == 2
+      # right_negative_encoder_input_tokens can be a 2d tensor (when feature
+      # spec set up for single negative) or a 3d tensor (when feature spec
+      # set up for multiple negatives).
+      assert right_negative_tokens.ndim == 2 or right_negative_tokens.ndim == 3
+
+      # All tensors should have the same batch size.
+      batch_size = right_positive_tokens.shape[0]
+      assert left_tokens.shape[0] == batch_size
+      assert right_negative_tokens.shape[0] == batch_size
+
+      if right_negative_tokens.ndim == 3:
+        # We have multiple negatives, so need to reshape the
+        # right_negative_encoder_input_tokens.
+
+        # Right positive and negative should have the same sequence length.
+        right_seq_length = right_positive_tokens.shape[1]
+        assert right_seq_length == right_negative_tokens.shape[2]
+
+        num_negatives = right_negative_tokens.shape[1]
+        right_negative_tokens = jnp.reshape(
+            right_negative_tokens,
+            (batch_size * num_negatives, right_seq_length))
+
+      (left_encodings, right_encodings,
+       logits), _ = self.module.apply({'params': params},
+                                      left_tokens,
+                                      right_positive_tokens,
+                                      right_negative_tokens,
+                                      enable_dropout=rngs is not None,
+                                      rngs=rngs,
+                                      mutable='dropout')
+
       # `left_logits` is of shape [B, B*(1+num_negatives)] that considers the
       # negatives while `right_logits` is in shape [B, B] that doesn't considers
       # negatives. `num_negatives` could be greater than 1 in the future.
@@ -259,11 +292,11 @@ class DualEncoderModel(DualEncoderBase):
     # For details please check https://arxiv.org/abs/1902.08564. The tensor
     # shapes are not changed after scaling.
     if dropout_rng is not None:
-      left_logits = (left_logits -
-                     self._logit_margin * jnp.eye(
-                         N=left_logits.shape[0], M=left_logits.shape[1]))
-      right_logits = (right_logits -
-                      self._logit_margin * jnp.eye(right_logits.shape[0]))
+      left_logits = (
+          left_logits - self._logit_margin *
+          jnp.eye(N=left_logits.shape[0], M=left_logits.shape[1]))
+      right_logits = (
+          right_logits - self._logit_margin * jnp.eye(right_logits.shape[0]))
 
     return left_encodings, right_encodings, left_logits, right_logits
 
@@ -310,6 +343,14 @@ class DualEncoderModel(DualEncoderBase):
         mask=None,
         loss=loss,
         z_loss=total_z_loss)
+    metrics.update({
+        'mrr':
+            metrics_lib.AveragePerStep.from_model_output(
+                utils.compute_rr(
+                    left_logits,
+                    utils.sparse_labels_for_in_batch_cross_entropy(
+                        (left_logits))))
+    })
     if self._use_align_uniform:
       metrics.update({
           'align_loss':
@@ -350,4 +391,31 @@ class DualEncoderModel(DualEncoderBase):
       )
 
     return loss, metrics
+
+  def score_batch(self,
+                  params: Mapping[str, Array],
+                  batch: Mapping[str, jnp.ndarray],
+                  return_intermediates: bool = False) -> jnp.ndarray:
+    """Model prediction for batch.
+
+    Args:
+      params: Model parameters.
+      batch: A batch of inputs.
+      return_intermediates: Whether to return intermediates.
+
+    Returns:
+      an array of encodings or similarity scores (with optional intermediates).
+    """
+    if self._inference_mode not in self.ALLOWED_INFERENCE_MODE:
+      raise ValueError(
+          'Invalid `inference_mode`: %s. Supported inference mode: %s.' %
+          (self._inference_mode, self.ALLOWED_INFERENCE_MODE))
+    if self._inference_mode == 'encode':
+      return self._encode_batch(params, batch)
+    elif self._inference_mode == 'similarity':
+      return self._similarity_batch(params, batch, return_intermediates)
+    elif self._inference_mode == 'pointwise_similarity':
+      logits = self._similarity_batch(params, batch, return_intermediates)
+      return jnp.diagonal(logits)
+
 

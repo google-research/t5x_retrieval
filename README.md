@@ -4,7 +4,7 @@ T5X Retrieval is a JAX implementation of T5 (Text-to-Text Transfer Transformer) 
 It is built on top of T5 on JAX, aka [T5X](https://github.com/google-research/t5x).
 This is targeted at Natural Language Understanding researchers as well as application developers who are aiming to use the latest T5-based Transformer models for search, retrieval and ranking applications, but in the JAX framework as opposed to TensorFlow.
 
-T5X Retrieval is an efficient training and evaluation framework that supports trasformer-based neural retrieval and ranking models such as sentence encoders and dense retrieval models. It supports multi-pod large model training, large cross-batch negatives and the capability to initialize from any pre-trained model trained using T5X.
+T5X Retrieval is an efficient training and evaluation framework that supports transformer-based neural retrieval and ranking models such as sentence encoders and dense retrieval models. It supports multi-pod large model training, large cross-batch negatives and the capability to initialize from any pre-trained model trained using T5X.
 
 This launch open sources the training and inference code, including references to TFDS for training data, actual model training code (Python JAX & Flaxformer), pre-trained models and basic inference example code. This end-to-end example model code is meant to accompany the SentenceT5 and Generalizable T5 Retrieval models that includes the implementation and performance on relevant benchmarks.
 

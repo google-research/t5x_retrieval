@@ -73,19 +73,13 @@ class DualEncoderFeatureConverterFactory(object):
   """Factory for dual encoder feature converters."""
 
   def __init__(self, feature_specs: Iterable[FeatureSpecConfig],
-               use_negatives: bool = False, is_multimodal: bool = False):
+               is_multimodal: bool = False):
     self.feature_specs = feature_specs
-    self.use_negatives = use_negatives
     self.is_multimodal = is_multimodal
 
   def __call__(self,
                pack: bool = False,
                use_custom_packing_ops: bool = False):
-    if self.use_negatives and not self.is_multimodal:
-      # NOTE: only works for text modality.
-      return DualEncoderWithNegativesFeatureConverter(
-          pack=pack, use_custom_packing_ops=use_custom_packing_ops)
-
     feature_spec_map = FeatureSpec.to_map(self.feature_specs)
     return DualEncoderFeatureConverter(
         input_features=feature_spec_map.values(),
@@ -232,103 +226,6 @@ class DualEncoderFeatureConverter(FeatureConverter):
       model_feature_lengths[model_feature] = task_feature_lengths[k]
     if self.pack:
       raise ValueError("Packing not supported")
-
-    return model_feature_lengths
-
-
-class DualEncoderWithNegativesFeatureConverter(FeatureConverter):
-  """Feature converter for dual-encoder achitecture with negative inputs.
-
-  The inputs and targets to the dual-encoder are sent to the left and right
-  encoders separately.
-  """
-  TASK_FEATURES = {
-      "inputs": FeatureConverter.FeatureSpec(tf.int32),
-      "targets": FeatureConverter.FeatureSpec(tf.int32),
-      "negative_targets": FeatureConverter.FeatureSpec(tf.int32),
-  }
-  MODEL_FEATURES = {
-      "left_encoder_input_tokens":
-          FeatureConverter.FeatureSpec(tf.int32),
-      "right_encoder_input_tokens":
-          FeatureConverter.FeatureSpec(tf.int32),
-      "right_negative_encoder_input_tokens":
-          FeatureConverter.FeatureSpec(tf.int32),
-  }
-  PACKING_FEATURE_DTYPES = None
-
-  def _convert_features(self, ds: tf.data.Dataset,
-                        input_lengths: Mapping[str, int]) -> tf.data.Dataset:
-    """Convert the input dataset to an output dataset to be fed to the model.
-
-    The conversion process involves two steps
-
-    1. Each feature in the `input_lengths` is padded.
-    2. "inputs" fields are mapped to the left encoder input and "targets" are
-       mapped to right encoder input.
-
-    Assume the input dataset has two examples each with "inputs" and "targets".
-
-    ds = [{"inputs": [7, 8, 5, 1], "targets": [3, 9, 1], "negative_targets": [2,
-    7, 1]},
-          {"inputs": [8, 4, 9, 3, 1], "targets": [4, 1], "negative_targets": [3,
-          1]}]
-
-    task_feature_lengths = {"inputs": 8, "targets": 4, "negative_targets": 4}
-
-    First, the `inputs` are padded to length 8 and assigned to
-    "left_encoder_input_tokens" field. The `targets` are processed similarly.
-
-    converted_ds = [
-    {
-         "left_encoder_input_tokens": [7, 8, 5, 1, 0, 0, 0, 0],
-         "right_encoder_input_tokens": [3, 9, 1, 0],
-         "right_negative_encoder_input_tokens": [2, 7, 1, 0],
-    },
-    {
-         "left_encoder_input_tokens": [8, 4, 9, 3, 1, 0, 0, 0],
-         "right_encoder_input_tokens": [4, 1, 0, 0],
-         "right_negative_encoder_input_tokens": [3, 1, 0, 0],
-    },
-         ]
-
-    Args:
-      ds: an input tf.data.Dataset to be converted.
-      input_lengths: a mapping from a feature to its length
-
-    Returns:
-      the converted dataset.
-    """
-
-    def convert_example(
-        features: Mapping[str, tf.Tensor]) -> Mapping[str, tf.Tensor]:
-      d = {
-          "left_encoder_input_tokens": features["inputs"],
-          "right_encoder_input_tokens": features["targets"],
-          "right_negative_encoder_input_tokens": features["negative_targets"],
-      }
-      return d
-
-    if self.pack:
-      raise ValueError(
-          "Dual encoder only takes non packed examples at this moment."
-      )
-
-    ds = self._pack_or_pad(ds, input_lengths)
-    return ds.map(
-        convert_example, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-
-  def get_model_feature_lengths(
-      self, task_feature_lengths: Mapping[str, int]) -> Mapping[str, int]:
-    """Define the length relationship between input and output features."""
-    left_encoder_length = task_feature_lengths["inputs"]
-    right_encoder_length = task_feature_lengths["targets"]
-    right_negative_encoder_length = task_feature_lengths["negative_targets"]
-    model_feature_lengths = {
-        "left_encoder_input_tokens": left_encoder_length,
-        "right_encoder_input_tokens": right_encoder_length,
-        "right_negative_encoder_input_tokens": right_negative_encoder_length,
-    }
 
     return model_feature_lengths
 

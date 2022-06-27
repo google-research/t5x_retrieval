@@ -153,6 +153,26 @@ class UtilsTest(parameterized.TestCase):
     self.assertLess(scalar_loss_mean, scalar_loss_worse)
     self.assertEqual(2.0 * scalar_loss_mean, scalar_loss_sum)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="logits_of_2x2",
+          logits=np.arange(4).reshape(2, 2),
+          expected_rr=[0.5, 1.]),
+      dict(
+          testcase_name="logits_of_5x5",
+          logits=np.arange(25).reshape(5, 5),
+          expected_rr=[0.2, 0.25, 0.333, 0.5, 1.]),
+      dict(
+          testcase_name="logits_of_2x5",
+          logits=np.arange(10).reshape(2, 5),
+          expected_rr=[0.2, 0.25]))
+  def test_compute_rr(self, logits, expected_rr):
+    np.testing.assert_allclose(
+        utils.compute_rr(
+            logits, utils.sparse_labels_for_in_batch_cross_entropy(logits)),
+        expected_rr,
+        rtol=0.01)
+
 
 class CheckpointUtilsTest(parameterized.TestCase):
 

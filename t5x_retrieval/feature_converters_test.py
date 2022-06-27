@@ -146,31 +146,6 @@ class DualEncoderFeatureConverterTest(tf.test.TestCase):
       list(converted_ds.as_numpy_iterator())
 
 
-class DualEncoderWithNegativeFeatureConverterTest(tf.test.TestCase):
-
-  def test_dual_encoder_unpacked(self):
-    x = [{
-        "inputs": [9, 4, 3, 8, 1],
-        "targets": [3, 9, 4, 1],
-        "negative_targets": [2, 3, 7, 1]
-    }]
-    ds = create_default_dataset(
-        x, feature_names=("inputs", "targets", "negative_targets"))
-
-    task_feature_lengths = {"inputs": 7, "targets": 5, "negative_targets": 5}
-
-    converter = feature_converters.DualEncoderWithNegativesFeatureConverter(
-        pack=False)
-    converted_ds = converter(ds, task_feature_lengths)
-
-    expected = {
-        "left_encoder_input_tokens": [9, 4, 3, 8, 1, 0, 0],
-        "right_encoder_input_tokens": [3, 9, 4, 1, 0],
-        "right_negative_encoder_input_tokens": [2, 3, 7, 1, 0],
-    }
-    assert_dataset(converted_ds, expected)
-
-
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ from __gin__ import dynamic_registration
 import seqio
 from t5x import adafactor
 from t5x_retrieval import feature_converters
-from t5x_retrieval import models as models
+from t5x_retrieval import models
 
 ARCHITECTURE = %gin.REQUIRED
 
@@ -33,10 +33,14 @@ adafactor.Adafactor:
   step_offset = 0
 
 # Model
-MODEL = @models.DualEncoderModel()
-models.DualEncoderModel:
-  use_negatives = False
+MODEL = @models.DualEncoderRetrievalDistillModel()
+models.DualEncoderRetrievalDistillModel:
   use_align_uniform = False
+  ranking_loss_weight = 1.0
+  inbatch_loss_weight = 1.0
+  logit_scale = 100
+  logit_margin = 0
+  is_soft_label_normalized = False  # Change this according to the actual data.
   feature_converter_cls = @feature_converters.DualEncoderFeatureConverterFactory()
   module = %ARCHITECTURE  # provided by t5_flaxformer
   input_vocabulary = %VOCABULARY

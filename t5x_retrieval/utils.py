@@ -100,19 +100,19 @@ def get_batch_unmixed_dataset(
 # ===== Losses ===== #
 # More details about alignment and uniformity loss can be found at
 # https://arxiv.org/pdf/2005.10242.pdf. They measure the quality of embeddings.
-def compute_align_loss(x, y, alpha=2):
+def compute_align_loss(x: jnp.array, y: jnp.array, alpha: int=2):
   loss = jnp.linalg.norm(x - y, ord=2, axis=1)
   return lax.pow(loss, 1.0 * alpha).mean()
 
 
-def compute_uniform_loss(xs, t=2):
+def compute_uniform_loss(xs: jnp.array, t: int=2):
   """Computes the euclidean distance between every pair of row vectors in the input."""
   distance_kernel = lambda x, y: jnp.sqrt(jnp.sum((x - y)**2))
   loss = jax.vmap(lambda x: jax.vmap(lambda y: distance_kernel(x, y))(xs))(xs)
   return jnp.log(jnp.exp(-t * lax.pow(loss, 2.0)).mean())
 
 
-def sigmoid_cross_entropy_with_logits(logits, labels):
+def sigmoid_cross_entropy_with_logits(logits: jnp.array, labels: jnp.array):
   """Compute binary cross entropy loss with logits input.
 
   Args:
@@ -130,7 +130,7 @@ def sigmoid_cross_entropy_with_logits(logits, labels):
   return loss
 
 
-def apply_temperature(probs, temperature):
+def apply_temperature(probs: jnp.array, temperature: float):
   """Apply a temperature to probabilities."""
   if temperature <= 0:
     raise ValueError('Temperature must be positive.')
@@ -140,8 +140,8 @@ def apply_temperature(probs, temperature):
   return x / (x + y)
 
 
-def binary_cross_entropy_with_logits(logits,
-                                     labels,
+def binary_cross_entropy_with_logits(logits: jnp.array,
+                                     labels: jnp.array,
                                      weights=None,
                                      temperature=1.0):
   """Binary cross-entropy loss function.
@@ -230,7 +230,9 @@ class AUC(clu.metrics.CollectingMetric.from_outputs(('labels', 'logits'))):
                                          self.values['logits'])
 
 
-def compute_auc(targets, predictions, targets_threshold=None):
+def compute_auc(targets: jnp.array,
+                predictions: jnp.array,
+                targets_threshold=None):
   """Compute Area Under the ROC and PR curves.
 
   ROC - Receiver Operating Characteristic
@@ -263,6 +265,23 @@ def compute_auc(targets, predictions, targets_threshold=None):
           AUC.from_model_output(
               logits=transformed_predictions, labels=binarized_targets),
   }
+
+
+def compute_rr(logits: jnp.array, labels: jnp.array):
+  """Compute Reciprocal Rank for in-batch examples.
+
+  Args:
+    logits: jnp.array of logits of shape [batch_size, batch_size]
+    labels: jnp.array of indices indicating the positive example.
+
+  Returns:
+    An jnp.array of reciprocal rank of the positive example in-batch.
+  """
+  labels = jnp.expand_dims(labels, axis=-1)
+  logits_desc = np.argsort(-logits, axis=-1)
+  rank = (
+      jnp.argwhere(logits_desc == labels, size=logits_desc.shape[0])[:, -1] + 1)
+  return jnp.reciprocal(rank)
 
 
 # ===== Checkpoint ===== #
