@@ -1,4 +1,4 @@
-# Dual Encoder based on T5 (1.1) Base model.
+# Dual Encoder LongT5 Base model. Config based on Dual Encoder T5.1.1 Base model.
 # Provides MODEL
 from __gin__ import dynamic_registration
 
@@ -12,7 +12,7 @@ ARCHITECTURE = %gin.REQUIRED
 T5XR_INFERENCE_MODE = 'encode'
 LOSS_MODULE = @losses.InBatchCrossEntropyLoss
 
-include 't5x_retrieval/configs/architectures/de_t5_1_1_flaxformer.gin'
+include 't5x_retrieval/configs/architectures/de_longt5_1_1_transient_global_flaxformer.gin'
 
 # Architecture overrides
 NUM_HEADS = 12
@@ -25,6 +25,7 @@ PROJECTION_DIM = 768
 # Vocabulary (shared by encoder and decoder)
 VOCABULARY = @seqio.SentencePieceVocabulary()
 seqio.SentencePieceVocabulary.sentencepiece_model_file = "gs://t5-data/vocabs/cc_all.32000.100extra/sentencepiece.model"
+NUM_EMBEDDINGS = 32128  # vocab size rounded to a multiple of 128 for TPU efficiency
 
 # Optimizer
 # `learning_rate` is set by `Trainer.learning_rate_fn`.

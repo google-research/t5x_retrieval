@@ -1,0 +1,12 @@
+# Dual Encoder LongT5 Base model. Config based on Dual Encoder T5.1.1 Base model.
+# Provides MODEL
+
+include 't5x_retrieval/configs/models/de_longt5_1_1_transient_global_base.gin'  # imports vocab, optimizer and model.
+
+# Architecture overrides
+NUM_HEADS = 16
+NUM_ENCODER_LAYERS = 24
+NUM_DECODER_LAYERS = 24
+HEAD_DIM = 64
+EMBED_DIM = 1024
+MLP_DIM = 2816

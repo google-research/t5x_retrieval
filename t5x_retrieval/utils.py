@@ -34,6 +34,7 @@ from typing import Callable, Optional, Sequence, Type
 
 import clu.metrics
 import flax
+from flax.training import common_utils
 import jax
 from jax import lax
 from jax.experimental import multihost_utils
@@ -48,7 +49,7 @@ from t5x import utils as t5x_utils
 import tensorflow as tf
 
 DatasetConfig = t5x_utils.DatasetConfig
-PyTreeDef = type(jax.tree_structure(None))
+PyTreeDef = type(jax.tree_util.tree_structure(None))
 
 
 # ===== Datasets ===== #
@@ -100,12 +101,12 @@ def get_batch_unmixed_dataset(
 # ===== Losses ===== #
 # More details about alignment and uniformity loss can be found at
 # https://arxiv.org/pdf/2005.10242.pdf. They measure the quality of embeddings.
-def compute_align_loss(x: jnp.array, y: jnp.array, alpha: int=2):
+def compute_align_loss(x: jnp.array, y: jnp.array, alpha: int = 2):
   loss = jnp.linalg.norm(x - y, ord=2, axis=1)
   return lax.pow(loss, 1.0 * alpha).mean()
 
 
-def compute_uniform_loss(xs: jnp.array, t: int=2):
+def compute_uniform_loss(xs: jnp.array, t: int = 2):
   """Computes the euclidean distance between every pair of row vectors in the input."""
   distance_kernel = lambda x, y: jnp.sqrt(jnp.sum((x - y)**2))
   loss = jax.vmap(lambda x: jax.vmap(lambda y: distance_kernel(x, y))(xs))(xs)
@@ -181,6 +182,9 @@ def in_batch_cross_entropy(
     logits: jnp.array,
     labels: Optional[jnp.array] = None,
     weights: Optional[jnp.array] = None,
+    off_diagonal_positive_mask: Optional[jnp.array] = None,
+    num_negatives: jnp.int32 = 0,
+    label_smoothing: float = 0.0,
     reduce_fn: Optional[Callable[[jnp.array],
                                  jnp.array]] = jnp.mean) -> jnp.array:
   """In batch cross-entropy loss function.
@@ -195,9 +199,15 @@ def in_batch_cross_entropy(
       [batch_size, batch_size + sample_size] where sample_size is the number of
       extra negative right examples, if any.
     labels: [batch_size, batch_size + sample_size].  If None, then this function
-      generates one hot labels which assumes the diagnoal elements correspond to
+      generates one hot labels which assumes the diagonal elements correspond to
       the ground truth.
     weights: [batch_size].  Weights for each pair (or row).
+    off_diagonal_positive_mask: a Boolean Tensor of [batch_size, batch_size].
+      A Tensor masks the off-diagonal positives. With off-diagonal positives
+      masked by 1, and others with 0, including the diagonal positives.
+    num_negatives: number of negative examples. Default to 0.
+    label_smoothing: label smoothing constant, used to determine the on and off
+     values.
     reduce_fn: Callable on how to reduce losses to a scalar.  If none, returns
       row-wise loss.
 
@@ -205,16 +215,76 @@ def in_batch_cross_entropy(
     [batch_size] array of cross entropy losses if reduce_fn is None.  Otherwise,
     return a scalar of reduced row loss.
   """
-  if labels is None:
-    num_classes = logits.shape[1]
-    sparse_labels = sparse_labels_for_in_batch_cross_entropy(logits)
-    labels = jax.nn.one_hot(sparse_labels, num_classes, dtype=logits.dtype)
+  if (num_negatives > 0) and (off_diagonal_positive_mask is None):
+    raise ValueError(
+        'num_negatives (positive integer) is used only in create '
+        'off_diagonal_positive_mask.')
 
-  row_loss, _ = t5x_losses.cross_entropy_with_logits(logits, labels, z_loss=0.0)
+  normalizing_constant = 0.0
+  if labels is None:
+    num_classes = logits.shape[-1]
+    sparse_labels = sparse_labels_for_in_batch_cross_entropy(logits)
+    confidence, low_confidence, normalizing_constant = 1.0, 0.0, 0.0
+    if num_classes > 1:
+      confidence = 1.0 - label_smoothing
+      low_confidence = (1.0 - confidence) / (num_classes - 1)
+      normalizing_constant = -(
+          confidence * jnp.log(confidence) +
+          (num_classes - 1) * low_confidence * jnp.log(low_confidence + 1e-20))
+    labels = common_utils.onehot(
+        sparse_labels,
+        num_classes,
+        on_value=confidence,
+        off_value=low_confidence)
+
+  if off_diagonal_positive_mask is None:
+    row_loss, _ = t5x_losses.cross_entropy_with_logits(
+        logits, labels, z_loss=0.0)
+  else:
+    off_diagonal_positive_mask = off_diagonal_positive_mask * (
+        1 - jnp.identity(logits.shape[0]))
+    if num_negatives > 0:
+      off_diagonal_positive_mask = jnp.pad(
+          off_diagonal_positive_mask, [(0, 0), (0, num_negatives)])
+    masked_logits = jnp.where(off_diagonal_positive_mask, -1e+9, logits)
+    row_loss, _ = t5x_losses.cross_entropy_with_logits(
+        masked_logits, labels, z_loss=0.0)
+
+  row_loss = row_loss - normalizing_constant
   if weights:
     row_loss = row_loss * weights
 
   return reduce_fn(row_loss) if reduce_fn is not None else row_loss
+
+
+def get_off_diagonal_positive_mask(reference_labels: jnp.ndarray,
+                                   return_dtype: jnp.dtype = bool):
+  """Construct mask for off diagonal positives from reference labels.
+
+  For a given batch, the off diagonal mask is constructed by comparing the
+  reference labels across examples. E.g. if the batch size is 3, and
+  the reference label is [11, 22, 11], the off diagonal positive mask is
+  [[0, 0, 1],
+   [0, 0, 0],
+   [1, 0, 0]]
+  indicating the 1st and the 3nd are mutually positive, as their labels are
+  same.
+
+  Args:
+    reference_labels: a [batch] Tensor, which stores the reference information
+      to construct the mask.
+    return_dtype: dtype for returned mask.
+
+  Returns:
+    mask: a [batch, batch] Boolean Tensor for off-diagonal positive mask.
+  """
+  reference_labels = jnp.squeeze(reference_labels)
+  if reference_labels.ndim > 1:
+    raise ValueError('Provide only 1 reference label per example in batch! '
+                     'The reference_labels should be of the shape [batch].')
+  mask = (reference_labels[None, :] == reference_labels[:, None]
+          - jnp.identity(reference_labels.shape[0], dtype=bool))
+  return mask.astype(return_dtype)
 
 
 # ===== Metrics ===== #

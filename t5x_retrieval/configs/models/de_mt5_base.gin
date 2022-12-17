@@ -6,8 +6,11 @@ import seqio
 from t5x import adafactor
 from t5x_retrieval import feature_converters
 from t5x_retrieval import models as models
+from t5x_retrieval import losses
 
 ARCHITECTURE = %gin.REQUIRED
+T5XR_INFERENCE_MODE = 'encode'
+LOSS_MODULE = @losses.InBatchCrossEntropyLoss
 
 # MT5 is identical to t5.1.1 architecture except for the vocabulary.
 include 't5x_retrieval/configs/architectures/de_t5_1_1_flaxformer.gin'
@@ -37,8 +40,10 @@ MODEL = @models.DualEncoderModel()
 models.DualEncoderModel:
   use_negatives = False
   use_align_uniform = False
+  inference_mode = %T5XR_INFERENCE_MODE
   feature_converter_cls = @feature_converters.DualEncoderFeatureConverterFactory()
   module = %ARCHITECTURE  # provided by t5_flaxformer
+  loss_module_factory = %LOSS_MODULE
   input_vocabulary = %VOCABULARY
   output_vocabulary = %VOCABULARY
   optimizer_def = %OPTIMIZER

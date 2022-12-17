@@ -6,8 +6,10 @@ import seqio
 from t5x import adafactor
 from t5x_retrieval import feature_converters
 from t5x_retrieval import models
+from t5x_retrieval import losses
 
 ARCHITECTURE = %gin.REQUIRED
+LOSS_MODULE = @losses.InBatchCrossEntropyLoss
 
 include 't5x_retrieval/configs/architectures/de_t5_flaxformer.gin'
 
@@ -37,6 +39,7 @@ models.DualEncoderModel:
   use_align_uniform = False
   feature_converter_cls = @feature_converters.DualEncoderFeatureConverterFactory()
   module = %ARCHITECTURE  # provided by t5_flaxformer
+  loss_module_factory = %LOSS_MODULE
   input_vocabulary = %VOCABULARY
   output_vocabulary = %VOCABULARY
   optimizer_def = %OPTIMIZER

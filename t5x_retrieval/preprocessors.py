@@ -25,9 +25,34 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-r"""Separate file for storing the current version of T5X Retrieval.
+"""Preprocessors for T5X Retrieval."""
 
-Stored in a separate file so that setup.py can reference the version without
-pulling in all the dependencies in __init__.py.
-"""
-__version__ = '0.0.0'
+import tensorflow as tf
+
+
+def to_stsb_label(dataset: tf.data.Dataset, label_field_name: str,
+                  label_type: str) -> tf.data.Dataset:
+  """Converts the labels to scores within [0, 1] or multi class labels.
+
+  Args:
+    dataset: A TensorFlow dataset.
+    label_field_name: A string of the label field name.
+    label_type: A string indicating the label type.
+
+  Returns:
+    A TensorFlow dataset after the transformation.
+  """
+
+  def map_fn(example):
+    if label_type == "score":
+      label = example[label_field_name] / 5
+    elif label_type == "multi_class":
+      label = example[label_field_name]
+      label = tf.round(label * 2)
+    else:
+      raise ValueError(f"Unsupported label type: {label_type}")
+    label = tf.expand_dims(label, axis=-1)
+    example[label_field_name] = label
+    return example
+
+  return dataset.map(map_fn, num_parallel_calls=tf.data.AUTOTUNE)

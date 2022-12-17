@@ -41,7 +41,7 @@ BATCH_SIZE = 128
 train_script.train:
   infer_eval_dataset_cfg = None
   eval_steps = 20
-  eval_period = 200  # eval frequency
+  eval_period = 1000  # eval frequency
   random_seed = None
 
 train/utils.DatasetConfig:
@@ -69,7 +69,7 @@ utils.RestoreCheckpointConfig:
   fallback_to_scratch = True
 
 utils.SaveCheckpointConfig:
-  period = 100
+  period = 1000
   dtype = 'float32'
   keep = None  # keep all checkpoints
 

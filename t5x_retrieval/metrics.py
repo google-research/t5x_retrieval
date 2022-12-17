@@ -25,9 +25,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-r"""Separate file for storing the current version of T5X Retrieval.
+"""Customized metric functions for T5X Retrieval."""
 
-Stored in a separate file so that setup.py can reference the version without
-pulling in all the dependencies in __init__.py.
-"""
-__version__ = '0.0.0'
+from typing import Dict, Sequence
+
+import scipy.stats
+
+
+def spearman_corrcoef(targets: Sequence[float],
+                      scores: Sequence[float]) -> Dict[str, float]:
+  """Spearman correlation coefficient.
+
+  Args:
+    targets: list of float.
+    scores: list of float.
+
+  Returns:
+    Spearman correlation across all targets and scores.
+  """
+  return {'spearman_corrcoef': 100 * scipy.stats.spearmanr(targets, scores)[0]}

@@ -40,6 +40,7 @@ utils = seqio.utils
 FeatureConverter = seqio.FeatureConverter
 
 
+# TODO(b/262657107): Add features for universal feature converter.
 _MODEL_FEATURES_MAPPING = {
     "inputs": "left_encoder_input_tokens",
     "targets": "right_encoder_input_tokens",
@@ -59,12 +60,12 @@ class FeatureSpec:
   rank: int
   sequence_dim: int
 
-  @staticmethod
+  @classmethod
   def to_map(
-      feature_specs: Iterable[FeatureSpecConfig]) -> Mapping[str, Any]:
+      cls, feature_specs: Iterable[FeatureSpecConfig]) -> Mapping[str, Any]:
     feature_spec_map = {}
     for name, dtype_str, rank, sequence_dim in feature_specs:
-      feature_spec_map[name] = FeatureSpec(
+      feature_spec_map[name] = cls(
           name, getattr(tf, dtype_str), rank, sequence_dim)
     return feature_spec_map
 

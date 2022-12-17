@@ -1,0 +1,6 @@
+from __gin__ import dynamic_registration
+
+from t5x import trainer
+
+# Parameters for trainer.Trainer:
+trainer.Trainer.weight_metrics_computer = @trainer.WeightMetricsComputer()

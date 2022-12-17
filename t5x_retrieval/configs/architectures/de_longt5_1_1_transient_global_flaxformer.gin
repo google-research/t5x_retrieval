@@ -1,4 +1,4 @@
-# Flaxformer implementation of Dual Encoder, based on original T5 (1.0) architecture.
+# Flaxformer implementation of Long Dual Encoder, based on LongT5 architecture.
 #
 # Required to be overridden:
 #
@@ -7,39 +7,37 @@
 # - HEAD_DIM
 # - EMBED_DIM
 # - MLP_DIM
-# - PROJECTION_DIM
 from __gin__ import dynamic_registration
 
 from flax import linen
-
 from flaxformer.architectures.dual_encoder import dual_encoder_architecture
 from flaxformer.architectures.dual_encoder import l2_norm
 from flaxformer.architectures.dual_encoder import poolings
 from flaxformer.architectures.dual_encoder import similarity_functions
-from flaxformer.architectures.t5 import t5_architecture
-from flaxformer.components.attention import dense_attention
+from flaxformer.architectures.longt5 import long_attention
+from flaxformer.architectures.longt5 import longt5_architecture
+from flaxformer.architectures.longt5 import relative_position_biases_general
 from flaxformer.components import dense
 from flaxformer.components import embedding
 from flaxformer.components import layer_norm
 from flaxformer.components import relative_position_biases
 
-from t5x import models
-from t5x import utils
 from t5x_retrieval import feature_converters
 
-# Must be overridden.
-NUM_HEADS = %gin.REQUIRED
+
 NUM_LAYERS = %gin.REQUIRED
+NUM_HEADS = %gin.REQUIRED
 HEAD_DIM = %gin.REQUIRED
 EMBED_DIM = %gin.REQUIRED
 MLP_DIM = %gin.REQUIRED
-PROJECTION_DIM = %gin.REQUIRED
 
-# Constants (may be overridden)
+
 ACTIVATION_DTYPE = 'bfloat16'
 ACTIVATION_PARTITIONING_DIMS = 1
-NUM_EMBEDDINGS = 32128  # vocab size rounded to a multiple of 128 for TPU efficiency
+SCALE = 1.0
 DROPOUT_RATE = 0.0
+LOCAL_RADIUS = 127
+TOKENS_PER_BLOCK = 16
 
 # Macros
 BIAS_INIT = @bias_init/linen.initializers.normal()
@@ -50,9 +48,9 @@ dropout_factory/linen.Dropout:
   broadcast_dims = (-2,)
 
 # Architecture (Flax Module)
-ARCHITECTURE = @dual_encoder_architecture.DualEncoder()
-dual_encoder_architecture.DualEncoder:
-  encoder_factory = @t5_architecture.Encoder
+ARCHITECTURE = @dual_encoder_architecture.LongDualEncoder()
+dual_encoder_architecture.LongDualEncoder:
+  encoder_factory = @longt5_architecture.LongEncoder
   pooler_factory = @poolings.MeanPooling
   shared_token_embedder_factory = @embedding.Embed
   l2_norm_factory = @l2_norm.L2Norm
@@ -61,17 +59,17 @@ dual_encoder_architecture.DualEncoder:
   dtype = %ACTIVATION_DTYPE
 
 # Encoder
-t5_architecture.Encoder:
+longt5_architecture.LongEncoder:
   num_layers = %NUM_LAYERS
-  layer_factory = @t5_architecture.EncoderLayer
+  layer_factory = @longt5_architecture.LongEncoderLayer
   input_dropout_factory = %DROPOUT_FACTORY
   output_dropout_factory = %DROPOUT_FACTORY
   layer_norm_factory = @layer_norm.T5LayerNorm
   position_embedder_factory = None
-  shared_relative_position_bias_factory = @relative_position_biases.RelativePositionBiases
+  shared_relpos_bias_factory = @relative_position_biases_general.RelativePositionBiasesGeneral
+  shared_side_relpos_bias_factory = @relative_position_biases_general.RelativePositionBiasesGeneral
   dtype = %ACTIVATION_DTYPE
 
-# TODO(b/262657686): Move this to model gin files.
 # Infer the input features from the TASK_FEATURE_LENGTHS passed by the user.
 feature_converters.DualEncoderFeatureConverterFactory:
   feature_specs = (
@@ -97,12 +95,41 @@ projection_layer/linen.initializers.variance_scaling:
   distribution = 'truncated_normal'
 
 # Encoder Layer
-t5_architecture.EncoderLayer:
-  attention = @dense_attention.MultiHeadDotProductAttention()
+longt5_architecture.LongEncoderLayer:
+  attention_factory = @long_attention.EtcTransientGlobalSelfAttention
   mlp = @dense.MlpBlock()
   dropout_factory = %DROPOUT_FACTORY
   layer_norm_factory = @layer_norm.T5LayerNorm
   activation_partitioning_dims = %ACTIVATION_PARTITIONING_DIMS
+
+# Long Attention (encoder, self-attention)
+long_attention.EtcTransientGlobalSelfAttention:
+  num_heads = %NUM_HEADS
+  tokens_per_block = %TOKENS_PER_BLOCK
+  local_radius = %LOCAL_RADIUS
+  dtype = %ACTIVATION_DTYPE
+  head_dim = %HEAD_DIM
+  kernel_init =  @attention_kernel_init/linen.initializers.variance_scaling()
+  bias_init = %BIAS_INIT
+  use_bias = False
+  broadcast_dropout = True
+  dropout_rate = %DROPOUT_RATE
+attention_kernel_init/linen.initializers.variance_scaling:
+  scale = %SCALE
+  mode = 'fan_in'
+  distribution = 'normal'
+
+# Relative position biases (encoder)
+relative_position_biases_general.RelativePositionBiasesGeneral:
+  num_heads = %NUM_HEADS
+  dtype = %ACTIVATION_DTYPE
+  num_buckets = 32
+  max_distance = 128
+  embedding_init = @relative_position_bias_init/linen.initializers.variance_scaling()
+relative_position_bias_init/linen.initializers.variance_scaling:
+  scale = %SCALE
+  mode = 'fan_avg'
+  distribution = 'uniform'
 
 # Token Embedder (shared)
 embedding.Embed:
@@ -116,38 +143,10 @@ embedding.Embed:
   name = 'token_embedder'
 token_embedder_init/linen.initializers.normal.stddev = 1.0
 
-# Attention (encoder, decoder, self-attention)
-dense_attention.MultiHeadDotProductAttention:
-  num_heads = %NUM_HEADS
-  head_dim = %HEAD_DIM
-  dtype = %ACTIVATION_DTYPE
-  kernel_init =  @attention_kernel_init/linen.initializers.variance_scaling()
-  bias_init = %BIAS_INIT
-  use_bias = False
-  broadcast_dropout = True
-  dropout_rate = %DROPOUT_RATE
-attention_kernel_init/linen.initializers.variance_scaling:
-  scale = 1.0
-  mode = 'fan_in'
-  distribution = 'normal'
-
-# Relative position biases (encoder, decoder)
-relative_position_biases.RelativePositionBiases:
-  num_heads = %NUM_HEADS
-  num_buckets = 32
-  max_distance = 128
-  dtype = %ACTIVATION_DTYPE
-  embedding_init = @relative_position_bias_init/linen.initializers.variance_scaling()
-relative_position_bias_init/linen.initializers.variance_scaling:
-  scale = 1.0
-  mode = 'fan_avg'
-  distribution = 'uniform'
-
-# MLP (encoder)
 dense.MlpBlock:
   use_bias = False
   intermediate_dim = %MLP_DIM
-  activations = ('relu',)
+  activations = ('gelu', 'linear')
   kernel_init = @mlp_kernel_init/linen.initializers.variance_scaling()
   bias_init = %BIAS_INIT
   intermediate_dropout_rate = %DROPOUT_RATE

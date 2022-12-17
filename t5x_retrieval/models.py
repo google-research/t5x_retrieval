@@ -43,19 +43,25 @@ from jax import lax
 import jax.numpy as jnp
 import ml_collections
 import numpy as np
+
 import seqio
 from t5x import losses as t5x_losses
 from t5x import metrics as metrics_lib
 from t5x import models as t5x_models
 from t5x import utils as t5x_utils
+from t5x_retrieval import losses
 from t5x_retrieval import utils
 import tensorflow as tf
 
 Array = Union[np.ndarray, jnp.ndarray, jax.pxla.ShardedDeviceArray, tf.Tensor]
 DType = jnp.dtype
 ConfigDict = ml_collections.ConfigDict
-PyTreeDef = type(jax.tree_structure(None))
+PyTreeDef = type(jax.tree_util.tree_structure(None))
 Optimizer = optim.Optimizer
+
+
+LEFT_ENCODINGS = 'left_encodings'
+RIGHT_ENCODINGS = 'right_encodings'
 
 
 class DualEncoderBase(t5x_models.BaseTransformerModel):
@@ -68,6 +74,8 @@ class DualEncoderBase(t5x_models.BaseTransformerModel):
 
   ALLOWED_INFERENCE_MODE = frozenset({'encode', 'similarity'})
 
+  # TODO(b/262639556): Change loss_module from Optional to required once
+  # loss-layers have been implemented
   def __init__(
       self,
       module: nn.Module,
@@ -76,9 +84,17 @@ class DualEncoderBase(t5x_models.BaseTransformerModel):
       output_vocabulary: seqio.Vocabulary,
       optimizer_def: optim.OptimizerDef,
       inference_mode: str = 'encode',
+      loss_module_factory: Optional[nn.Module] = None,
   ):
     self.FEATURE_CONVERTER_CLS = feature_converter_cls  # pylint: disable=invalid-name
     self._inference_mode = inference_mode
+
+    self.loss_module = None
+    # TODO(b/262639556): Remove check once loss-layer is not Optional
+    if loss_module_factory:
+      self.loss_module = loss_module_factory()
+      self.loss_module.validate_model_features(feature_converter_cls(False))
+
     super(DualEncoderBase, self).__init__(
         module=module,
         input_vocabulary=input_vocabulary,
@@ -101,6 +117,13 @@ class DualEncoderBase(t5x_models.BaseTransformerModel):
         jnp.ones(left_encoder_shape, encoder_type),
         jnp.ones(right_encoder_shape, encoder_type),
         enable_dropout=False)
+
+    # TODO(b/262639556): Remove check once loss-layer is not Optional
+    if self.loss_module:
+      loss_variables = self.loss_module.get_initial_variables(
+          rng, input_shapes, input_types)
+      initial_variables = initial_variables.copy(loss_variables)
+
     return initial_variables
 
   def loss_weights(self, batch: Mapping[str,
@@ -131,11 +154,18 @@ class DualEncoderBase(t5x_models.BaseTransformerModel):
                         batch: Mapping[str, jnp.ndarray],
                         return_intermediates: bool = False) -> Array:
     """Score the similarity of the left and right inputs."""
-    _, _, logits = self.module.apply({'params': params},
-                                     batch['left_encoder_input_tokens'],
-                                     batch['right_encoder_input_tokens'],
-                                     enable_dropout=False)
-    return logits
+    left_encodings, right_encodings, logits = self.module.apply(
+        {'params': params},
+        batch['left_encoder_input_tokens'],
+        batch['right_encoder_input_tokens'],
+        enable_dropout=False)
+    if return_intermediates:
+      return logits, {
+          LEFT_ENCODINGS: (left_encodings,),
+          RIGHT_ENCODINGS: (right_encodings,),
+      }
+    else:
+      return logits
 
   def score_batch(self,
                   params: Mapping[str, Array],
@@ -164,8 +194,10 @@ class DualEncoderBase(t5x_models.BaseTransformerModel):
 class DualEncoderModel(DualEncoderBase):
   """Model class for Dual Encoder."""
 
-  ALLOWED_INFERENCE_MODE = frozenset(
-      {'encode', 'similarity', 'pointwise_similarity'})
+  ALLOWED_INFERENCE_MODE = frozenset({
+      'encode', 'encode_left', 'encode_right', 'similarity',
+      'pointwise_similarity'
+  })
 
   def __init__(
       self,
@@ -174,6 +206,7 @@ class DualEncoderModel(DualEncoderBase):
       input_vocabulary: seqio.Vocabulary,
       output_vocabulary: seqio.Vocabulary,
       optimizer_def: optim.OptimizerDef,
+      loss_module_factory: Optional[losses.DualEncoderLoss] = None,
       inference_mode: str = 'encode',
       use_negatives: bool = False,
       use_align_uniform: bool = False,
@@ -188,6 +221,7 @@ class DualEncoderModel(DualEncoderBase):
       input_vocabulary: Vocabulary for the input features.
       output_vocabulary: Vocabulary for the output features.
       optimizer_def: Optimizer.
+      loss_module_factory: Factory to produce loss module.
       inference_mode: Inference mode (e.g. encode or similarity).
       use_negatives: Whether to use hard negatives.  If True, the model encodes
         the additional feature for hard negatives on the right tower.
@@ -206,7 +240,8 @@ class DualEncoderModel(DualEncoderBase):
         input_vocabulary=input_vocabulary,
         output_vocabulary=output_vocabulary,
         optimizer_def=optimizer_def,
-        inference_mode=inference_mode)
+        inference_mode=inference_mode,
+        loss_module_factory=loss_module_factory)
 
   def _compute_logits(
       self,
@@ -278,11 +313,9 @@ class DualEncoderModel(DualEncoderBase):
           {'params': params},
           batch['left_encoder_input_tokens'],
           batch['right_encoder_input_tokens'],
-          # TODO(jianmon): switch to call parameter
           enable_dropout=rngs is not None,
           rngs=rngs,
           mutable='dropout')
-      # TODO(jianmon): Support uni-directional logits in the future.
       left_logits, right_logits = logits, logits.transpose()
 
     left_logits *= self._logit_scale
@@ -291,7 +324,7 @@ class DualEncoderModel(DualEncoderBase):
     # Only additive margin to the logits for training mode.
     # For details please check https://arxiv.org/abs/1902.08564. The tensor
     # shapes are not changed after scaling.
-    if dropout_rng is not None:
+    if dropout_rng is not None and self._logit_margin != 0:
       left_logits = (
           left_logits - self._logit_margin *
           jnp.eye(N=left_logits.shape[0], M=left_logits.shape[1]))
@@ -299,66 +332,6 @@ class DualEncoderModel(DualEncoderBase):
           right_logits - self._logit_margin * jnp.eye(right_logits.shape[0]))
 
     return left_encodings, right_encodings, left_logits, right_logits
-
-  def _compute_loss(
-      self,
-      batch: Mapping[str, jnp.ndarray],
-      left_logits: jnp.ndarray,
-      right_logits: jnp.ndarray,
-  ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Compute the cross entropy loss given the left and right logits.
-
-    Args:
-      batch: a batch of inputs.
-      left_logits: array of shape (global_batch_size, global_batch_size) that
-        represents the scaled dot product of the left tower.
-      right_logits: array of shape (global_batch_size, global_batch_size) that
-        represents the scaled dot product of the right tower.
-
-    Returns:
-      loss: (bi-directional) batch cross-entropy loss.
-      weight_sum: global batch size.
-    """
-    # targets: [batch, 1] -> [batch, batch]
-    left_loss = utils.in_batch_cross_entropy(left_logits)
-    right_loss = utils.in_batch_cross_entropy(right_logits)
-    loss = jnp.mean(left_loss + right_loss)
-    return loss, 0.0, left_logits.shape[0]
-
-  def _compute_metrics(
-      self,
-      params: Mapping[str, Any],
-      batch: Mapping[str, jnp.ndarray],
-      left_logits: jnp.ndarray,
-      loss: jnp.ndarray,
-      total_z_loss: jnp.ndarray,
-      weight_sum: jnp.ndarray,
-      align_loss: Optional[jnp.ndarray] = None,
-      uniform_loss: Optional[jnp.ndarray] = None,
-  ) -> metrics_lib.MetricsMap:
-    """Compute metrics given the logits, targets and loss."""
-    metrics = t5x_models.compute_base_metrics(
-        logits=left_logits,
-        targets=utils.sparse_labels_for_in_batch_cross_entropy(left_logits),
-        mask=None,
-        loss=loss,
-        z_loss=total_z_loss)
-    metrics.update({
-        'mrr':
-            metrics_lib.AveragePerStep.from_model_output(
-                utils.compute_rr(
-                    left_logits,
-                    utils.sparse_labels_for_in_batch_cross_entropy(
-                        (left_logits))))
-    })
-    if self._use_align_uniform:
-      metrics.update({
-          'align_loss':
-              metrics_lib.AveragePerStep.from_model_output(align_loss),
-          'uniform_loss':
-              metrics_lib.AveragePerStep.from_model_output(uniform_loss),
-      })
-    return metrics
 
   def loss_fn(
       self,
@@ -370,27 +343,36 @@ class DualEncoderModel(DualEncoderBase):
 
     left_encodings, right_encodings, left_logits, right_logits = self._compute_logits(
         params, batch, dropout_rng)
-    # z_loss is already added to loss, which is a workaround for the numerical
-    # instability issue.
-    loss, z_loss, weight_sum = self._compute_loss(batch, left_logits,
-                                                  right_logits)
+    loss, metrics = self.loss_module.apply({'params': params},
+                                           batch=batch,
+                                           logits=left_logits,
+                                           right_logits=right_logits)
     if self._use_align_uniform:
       align_loss = utils.compute_align_loss(left_encodings, right_encodings)
       uniform_loss = utils.compute_uniform_loss(
           left_encodings) + utils.compute_uniform_loss(right_encodings)
-      metrics = self._compute_metrics(params, batch, left_logits, loss, z_loss,
-                                      weight_sum, align_loss, uniform_loss)
-    else:
-      metrics = self._compute_metrics(
-          params,
-          batch,
-          left_logits,
-          loss,
-          z_loss,
-          weight_sum,
-      )
+      metrics.update({
+          'align_loss':
+              metrics_lib.AveragePerStep.from_model_output(align_loss),
+          'uniform_loss':
+              metrics_lib.AveragePerStep.from_model_output(uniform_loss),
+      })
 
     return loss, metrics
+
+  def _encode_batch(self, params: Mapping[str, Array],
+                    batch: Mapping[str, jnp.ndarray]) -> Array:
+    """Encode the embeddings for the inputs."""
+    if self._inference_mode == 'encode_right':
+      encoder_input_tokens = batch['right_encoder_input_tokens']
+    else:
+      encoder_input_tokens = batch['left_encoder_input_tokens']
+    return self.module.apply(
+        {'params': params},
+        encoder_input_tokens,
+        # Disable the dropout during inference.
+        enable_dropout=False,
+        method=self.module.encode)
 
   def score_batch(self,
                   params: Mapping[str, Array],
@@ -410,12 +392,17 @@ class DualEncoderModel(DualEncoderBase):
       raise ValueError(
           'Invalid `inference_mode`: %s. Supported inference mode: %s.' %
           (self._inference_mode, self.ALLOWED_INFERENCE_MODE))
-    if self._inference_mode == 'encode':
+    if self._inference_mode.startswith('encode'):
       return self._encode_batch(params, batch)
     elif self._inference_mode == 'similarity':
       return self._similarity_batch(params, batch, return_intermediates)
     elif self._inference_mode == 'pointwise_similarity':
-      logits = self._similarity_batch(params, batch, return_intermediates)
-      return jnp.diagonal(logits)
+      if return_intermediates:
+        logits, intermediates = (
+            self._similarity_batch(params, batch, return_intermediates))
+        return jnp.diagonal(logits), intermediates
+      else:
+        logits = self._similarity_batch(params, batch, return_intermediates)
+        return jnp.diagonal(logits)
 
 

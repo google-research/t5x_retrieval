@@ -25,9 +25,29 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-r"""Separate file for storing the current version of T5X Retrieval.
+"""Postprocessors for T5X Retrieval."""
 
-Stored in a separate file so that setup.py can reference the version without
-pulling in all the dependencies in __init__.py.
-"""
-__version__ = '0.0.0'
+from typing import Mapping, Optional, Union
+
+import tensorflow as tf
+
+
+def extract_label_postprocessor(
+    output: Mapping[str, tf.Tensor],
+    example: Optional[Mapping[str, tf.Tensor]] = None,
+    is_target: Optional[bool] = False
+) -> Union[tf.Tensor, Mapping[str, tf.Tensor]]:
+  """Extracts the label to feed into the SeqIO evaluator.
+
+  Args:
+    output: A mapping of strings and tensors.
+    example: An optional mapping of strings and tensors.
+    is_target: An optional variable to indicate whether the postprocessor is
+      applied on the output or the target (i.e. the "labels" field.).
+
+  Returns:
+    The target tensor or the output mapping.
+  """
+  if is_target:
+    return example["labels"]
+  return output

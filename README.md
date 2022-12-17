@@ -125,7 +125,7 @@ pre-trained with a set of community question-answer pairs we collected. Finally,
 the model is fine-tuned on the [MS Marco](https://microsoft.github.io/msmarco/)
 dataset.
 
-The two encoders are shared so the GTR model functions as a single text encoder.
+The two encoders are [shared](https://arxiv.org/pdf/2204.07120.pdf) so the GTR model functions as a single text encoder.
 The input is variable-length English text and the output is a 768-dimensional
 vector.
 
